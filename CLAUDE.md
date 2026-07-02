@@ -124,6 +124,15 @@ Facebook groups: **out of scope** (login wall, ToS, anti-bot). Note as known dem
 
 **Phase 1 — vertical slice.** db models + migrations, Nettimoto adapter + one forum adapter, extractor, tier-1 matching only, plaintext email digest, scheduler. Definition of done: end-to-end run on fixtures produces a digest.
 
+**Phase 1.5 — backtest (match-density measurement).** Purpose: validate the load-bearing assumption — that real cross-border WTB↔FS matches occur often enough to sustain the product — BEFORE investing in Phases 2+. This is a measurement phase, not a feature phase.
+
+- Add `fetch_history(since: date) -> Iterator[RawPost]` to the forum adapter(s): paginate backwards through forum WTB sections 12–24 months deep. Rate-limited politely (forums are small servers — 1 req / 5–10 s, run overnight). Marketplace adapters do NOT get history (expired listings are gone; only current FS snapshot is used).
+- Extract all historical WTBs through the normal pipeline, flagged `historical=true` in `raw_posts`.
+- Time-shifted matching: run historical WTBs against the CURRENT FS snapshot from marketplace adapters, using tier-1 + naive name-similarity matching (Phase 2 quality not required — this measures density, not precision; manual-review the candidate matches).
+- Output: a one-page metrics report (script, not dashboard): WTB posts/month per forum+language; parts-category distribution; candidate match count; manually-confirmed match count; implied matches-per-tracked-item-per-month.
+- Interpretation note: the snapshot backtest UNDERSTATES live match density (one moment of supply vs continuous monitoring) — treat results as a floor.
+- **Kill/continue criteria**: continue to Phase 2 if ≥ 10 confirmed matches from 200 historical WTBs; otherwise park the project as portfolio work.
+
 **Phase 2 — match quality.** Normalizer (part numbers, brand aliases, currency), embeddings + pgvector, tier-2 fuzzy + LLM verification, confidence thresholds, golden-pair test suite.
 
 **Phase 3 — sources.** Add Blocket, Finn.no, Tori, SS.lv via adapter pattern. Each adapter: fixture-first (save HTML, write parser against it, then wire live).
