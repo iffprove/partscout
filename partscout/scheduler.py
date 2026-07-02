@@ -108,6 +108,7 @@ def poll_source(cfg: SourceConfig) -> None:
                 raw_text=post.raw_text,
                 raw_html=post.raw_html,
                 status="pending",
+                historical=post.historical,
             )
             session.add(db_post)
             try:

@@ -5,6 +5,7 @@ from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -39,6 +40,7 @@ class RawPostRecord(Base):
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     raw_html: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    historical: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     __table_args__ = (
         UniqueConstraint("source", "source_post_id", name="uq_raw_posts_source_id"),

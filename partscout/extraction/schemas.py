@@ -15,6 +15,7 @@ class RawPost(BaseModel):
     posted_at: datetime | None = None
     raw_text: str
     raw_html: str | None = None
+    historical: bool = False
 
 
 class Vehicle(BaseModel):

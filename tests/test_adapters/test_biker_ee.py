@@ -1,13 +1,63 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
+import pytest
+
+from partscout.adapters import biker_ee
 from partscout.adapters.biker_ee import BikerEeAdapter
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "forum"
 
 _ADAPTER = BikerEeAdapter(config=None)
+
+
+def _topic_html(title: str, datetime_str: str) -> str:
+    return f"""
+    <html><body>
+    <div class="postbody">
+      <h3>{title}</h3>
+      <div class="content">Some part description text.</div>
+      <time datetime="{datetime_str}">whenever</time>
+      <strong>SomeUser</strong>
+    </div>
+    </body></html>
+    """
+
+
+def _index_html(topic_ids: list[int]) -> str:
+    links = "\n".join(
+        f'<a class="topictitle" href="viewtopic.php?f=90&amp;t={tid}">Topic {tid}</a>'
+        for tid in topic_ids
+    )
+    return f"<html><body>{links}</body></html>"
+
+
+class _FakeResponse:
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def raise_for_status(self) -> None:
+        pass
+
+
+class _FakeClient:
+    def __init__(self, pages: dict[str, str]) -> None:
+        self._pages = pages
+
+    def __enter__(self) -> _FakeClient:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def get(self, url: str) -> _FakeResponse:
+        for key, html in self._pages.items():
+            if url.endswith(key):
+                return _FakeResponse(html)
+        raise AssertionError(f"unexpected URL requested: {url}")
 
 
 class TestBikerEeParser:
@@ -51,3 +101,48 @@ class TestBikerEeParser:
         post = _ADAPTER._parse_topic_page(html, url)
         assert post is not None
         assert post.posted_at is not None
+
+
+class TestFetchHistory:
+    def _patch_client(self, monkeypatch: pytest.MonkeyPatch, pages: dict[str, str]) -> None:
+        monkeypatch.setattr(biker_ee.httpx, "Client", lambda **_: _FakeClient(pages))
+        monkeypatch.setattr(biker_ee.time, "sleep", lambda *_: None)
+
+    def test_stops_at_empty_page_and_filters_by_since(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pages = {
+            "start=0": _index_html([1, 2]),
+            "start=25": _index_html([3]),
+            "start=50": _index_html([]),  # end of forum
+            "t=1": _topic_html("O: front fender", "2024-06-01T00:00:00+00:00"),
+            "t=2": _topic_html("O: rear shock", "2024-05-01T00:00:00+00:00"),
+            "t=3": _topic_html("O: old part", "2020-01-01T00:00:00+00:00"),  # out of range
+        }
+        self._patch_client(monkeypatch, pages)
+
+        posts = list(_ADAPTER.fetch_history(since=date(2024, 1, 1)))
+
+        assert {p.source_post_id for p in posts} == {"1", "2"}
+        assert all(p.historical for p in posts)
+
+    def test_stale_page_limit_stops_pagination(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        pages: dict[str, str] = {"t=1": _topic_html("O: front fender", "2024-06-01T00:00:00+00:00")}
+        # First page has an in-range topic; every following page is non-empty but
+        # entirely out-of-range, which should trip the stale-page limit rather than
+        # looping until _HISTORY_MAX_PAGES.
+        for page_num in range(biker_ee._HISTORY_STALE_PAGE_LIMIT + 3):
+            start = page_num * biker_ee._HISTORY_PAGE_SIZE
+            if page_num == 0:
+                pages[f"start={start}"] = _index_html([1])
+            else:
+                topic_id = 100 + page_num
+                pages[f"start={start}"] = _index_html([topic_id])
+                pages[f"t={topic_id}"] = _topic_html(
+                    "O: ancient part", "2010-01-01T00:00:00+00:00"
+                )
+        self._patch_client(monkeypatch, pages)
+
+        posts = list(_ADAPTER.fetch_history(since=date(2024, 1, 1)))
+
+        assert {p.source_post_id for p in posts} == {"1"}
