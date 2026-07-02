@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "partscout"
+version = "0.1.0"
+description = "Cross-border vehicle parts matcher for Nordic/Baltic markets"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.40.0",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0",
+    "psycopg2-binary>=2.9.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.27.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0.0",
+    "apscheduler>=3.10.0",
+    "jinja2>=3.1.0",
+    "python-dotenv>=1.0.0",
+    "pgvector>=0.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "mypy>=1.10.0",
+    "ruff>=0.4.0",
+    "types-beautifulsoup4>=4.12.0",
+]
+
+[project.scripts]
+partscout = "partscout.scheduler:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["partscout"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["UP009"]  # CLAUDE.md mandates # -*- coding: utf-8 -*- on every file
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests that call live APIs or require a running DB",
+]
