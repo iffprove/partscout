@@ -95,16 +95,19 @@ Rules:
 
 ## Source registry — v1 targets
 
-| Source | Country | Side | Method |
-|---|---|---|---|
-| nettimoto.com (parts) | FI | FS | Scrapy |
-| tori.fi (vehicle parts) | FI | FS | Scrapy |
-| blocket.se (MC parts) | SE | FS | Playwright likely |
-| finn.no (MC parts) | NO | FS | Scrapy |
-| ss.lv (moto) | LV | FS+WTB | Scrapy |
-| 1–2 live forums (scout at build time; verify activity before writing adapter) | SE/FI | WTB | Scrapy |
+| Source | Country | Side | Method | Status |
+|---|---|---|---|---|
+| nettimoto.com (parts) | FI | FS | httpx (JSON-LD) | Implemented |
+| biker.ee (forum) | EE | WTB | httpx (phpBB) | Implemented |
+| tori.fi (vehicle parts) | FI | FS | httpx (embedded JSON + JSON-LD) | Implemented |
+| ss.lv (moto) | LV | FS+WTB | httpx (static HTML) | Implemented |
+| blocket.se (MC parts) | SE | FS | — | **Blocked**: robots.txt explicitly prohibits crawling without written permission. Do not scrape. |
+| finn.no (MC parts) | NO | FS | — | **Blocked**: robots.txt explicitly prohibits crawling without written permission. Do not scrape. |
+| 1–2 live forums (scout at build time; verify activity before writing adapter) | SE/FI | WTB | Scrapy | Not started |
 
 Facebook groups: **out of scope** (login wall, ToS, anti-bot). Note as known demand gap.
+
+blocket.se and finn.no are excluded entirely, not deferred — their `robots.txt` carries an explicit anti-crawling notice ("Crawling ... is prohibited unless you have written permission"), not just path-level `Disallow` rules. Treat this the same as Phase 6's Allegro.pl-first approach: only revisit via an official API or written partnership, never by scraping around the notice.
 
 ## Operational rules
 

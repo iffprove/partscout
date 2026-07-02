@@ -106,4 +106,22 @@ SOURCE_REGISTRY: list[SourceConfig] = [
         country="EE",
         kind="both",
     ),
+    SourceConfig(
+        name="tori",
+        adapter_class_path="partscout.adapters.tori.ToriAdapter",
+        base_url="https://www.tori.fi/recommerce/forsale/search",
+        poll_interval_seconds=1800,  # 30 min
+        enabled=True,
+        country="FI",
+        kind="fs",
+    ),
+    SourceConfig(
+        name="ss_lv",
+        adapter_class_path="partscout.adapters.ss_lv.SsLvAdapter",
+        base_url="https://www.ss.lv/lv/transport/moto-transport/spare-parts/other-parts/",
+        poll_interval_seconds=1800,  # 30 min
+        enabled=True,
+        country="LV",
+        kind="both",
+    ),
 ]
