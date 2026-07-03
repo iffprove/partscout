@@ -28,16 +28,16 @@ class Extractor:
                 user=user,
                 tool=EXTRACTION_TOOL,
             )
+            return self._coerce(raw)
         except Exception:
             logger.exception("LLM extraction failed for %s", post.url)
             return None
 
-        return self._coerce(raw)
-
     # ------------------------------------------------------------------
 
     def _coerce(self, raw: dict[str, Any]) -> ExtractedListing:
-        v = raw.get("vehicle") or {}
+        v = raw.get("vehicle")
+        v = v if isinstance(v, dict) else {}
         vehicle = Vehicle(
             make=v.get("make"),
             model=v.get("model"),
@@ -45,7 +45,8 @@ class Extractor:
             year_to=v.get("year_to"),
         )
 
-        p = raw.get("part") or {}
+        p = raw.get("part")
+        p = p if isinstance(p, dict) else {}
         part = Part(
             name_en=p.get("name_en", ""),
             name_original=p.get("name_original", ""),

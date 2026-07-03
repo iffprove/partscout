@@ -93,6 +93,26 @@ class TestExtractorCoercion:
         result = ext.extract(post)
         assert result is None
 
+    def test_malformed_part_and_vehicle_returns_none(self) -> None:
+        # Real-world observed failure: the model occasionally returns a
+        # non-object value for a nested field despite the forced tool schema.
+        # Extraction must degrade to None for this one post, not crash the
+        # whole batch.
+        ext = _mock_extractor({
+            "kind": "fs",
+            "vehicle": "unknown",
+            "part": "some part",
+            "condition": "used",
+            "price": None,
+            "location_country": "FI",
+            "confidence": 0.5,
+        })
+        post = RawPost(source="test", source_post_id="5", url="http://x", raw_text="test")
+        result = ext.extract(post)
+        assert result is not None
+        assert result.vehicle.make is None
+        assert result.part.name_en == ""
+
 
 @pytest.mark.integration
 class TestExtractionAccuracy:
