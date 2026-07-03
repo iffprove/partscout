@@ -60,6 +60,32 @@ class _FakeClient:
         raise AssertionError(f"unexpected URL requested: {url}")
 
 
+class TestParseForumIndex:
+    def test_dedupes_multiple_links_to_same_topic(self) -> None:
+        # A real topic row renders a title link, an "unread" jump link, and a
+        # last-post permalink — all pointing at the same topic but with
+        # different query strings/params.
+        html = """
+        <html><body>
+        <a class="topictitle" href="viewtopic.php?f=90&amp;t=12345">Some topic</a>
+        <a href="viewtopic.php?f=90&amp;t=12345&amp;view=unread#unread">unread</a>
+        <a href="viewtopic.php?p=98765#p98765">last post</a>
+        </body></html>
+        """
+        urls = _ADAPTER._parse_forum_index(html)
+        assert len(urls) == 1
+        assert "t=12345" in urls[0]
+
+    def test_drops_permalink_only_links_without_t_param(self) -> None:
+        html = """
+        <html><body>
+        <a href="viewtopic.php?p=98765#p98765">post permalink only, no topic id</a>
+        </body></html>
+        """
+        urls = _ADAPTER._parse_forum_index(html)
+        assert urls == []
+
+
 class TestBikerEeParser:
     def test_vtx1800_wtb_parsed(self) -> None:
         html = (FIXTURES / "O_ VTX1800 tagaamordid -.html").read_text(encoding="utf-8")

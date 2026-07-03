@@ -149,14 +149,28 @@ class BikerEeAdapter(SourceAdapter):
                         break
 
     def _parse_forum_index(self, html: str) -> list[str]:
+        # The topic list renders several anchors per row (title, "jump to
+        # unread", last-post permalink) that all point at the same topic but
+        # don't share a URL string — e.g. "viewtopic.php?t=123" vs
+        # "viewtopic.php?p=456#p456". Dedupe by topic id, keeping only
+        # canonical t=-bearing links; p=-only permalinks are dropped since
+        # the same topic's title link is always present alongside them.
         soup = BeautifulSoup(html, "lxml")
+        seen_topic_ids: set[str] = set()
         urls: list[str] = []
         for a in soup.select("a.topictitle, a[href*='viewtopic.php']"):
             href = a.get("href", "")
-            if "viewtopic.php" in href:
-                full = href if href.startswith("http") else f"{_BASE_URL}/phpbb/{href}"
-                if full not in urls:
-                    urls.append(full)
+            if not isinstance(href, str) or "viewtopic.php" not in href:
+                continue
+            m = re.search(r"[?&]t=(\d+)", href)
+            if not m:
+                continue
+            topic_id = m.group(1)
+            if topic_id in seen_topic_ids:
+                continue
+            seen_topic_ids.add(topic_id)
+            full = href if href.startswith("http") else f"{_BASE_URL}/phpbb/{href}"
+            urls.append(full)
         return urls
 
     # ------------------------------------------------------------------
