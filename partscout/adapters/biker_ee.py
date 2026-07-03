@@ -90,7 +90,10 @@ class BikerEeAdapter(SourceAdapter):
         return posts
 
     def _scrape_history(self, since: date) -> Iterator[RawPost]:
-        seen_topic_urls: set[str] = set()
+        # Keyed by topic id, not the raw URL string: the forum is live while
+        # we paginate, so a bumped topic can resurface on a later page with a
+        # different query string (e.g. view=unread toggles) for the same id.
+        seen_topic_ids: set[str] = set()
         stale_pages = 0
 
         with httpx.Client(
@@ -111,11 +114,13 @@ class BikerEeAdapter(SourceAdapter):
                     time.sleep(_HISTORY_RATE_LIMIT_SECS + random.uniform(0, 3))
 
                 topic_urls = self._parse_forum_index(resp.text)
-                new_urls = [u for u in topic_urls if u not in seen_topic_urls]
+                new_urls = [
+                    u for u in topic_urls if self._topic_id_from_url(u) not in seen_topic_ids
+                ]
                 if not new_urls:
                     logger.info("No new topics at page %d — end of forum reached", page_num)
                     break
-                seen_topic_urls.update(new_urls)
+                seen_topic_ids.update(self._topic_id_from_url(u) for u in new_urls)
 
                 page_had_in_range = False
                 for url in new_urls:
@@ -147,6 +152,10 @@ class BikerEeAdapter(SourceAdapter):
                             since,
                         )
                         break
+
+    def _topic_id_from_url(self, url: str) -> str:
+        m = re.search(r"[?&]t=(\d+)", url)
+        return m.group(1) if m else url
 
     def _parse_forum_index(self, html: str) -> list[str]:
         # The topic list renders several anchors per row (title, "jump to

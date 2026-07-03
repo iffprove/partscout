@@ -172,3 +172,29 @@ class TestFetchHistory:
         posts = list(_ADAPTER.fetch_history(since=date(2024, 1, 1)))
 
         assert {p.source_post_id for p in posts} == {"1"}
+
+    def test_same_topic_resurfacing_on_later_page_is_not_refetched(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A bumped topic can appear on an earlier page fetch without
+        # view=unread and resurface on a later page fetch with it (or vice
+        # versa) — same topic id, different URL string. Must be counted once.
+        pages = {
+            "start=0": (
+                '<html><body>'
+                '<a class="topictitle" href="viewtopic.php?f=90&amp;t=1">topic</a>'
+                '</body></html>'
+            ),
+            "start=25": (
+                '<html><body>'
+                '<a href="viewtopic.php?f=90&amp;t=1&amp;view=unread#unread">topic (bumped)</a>'
+                '</body></html>'
+            ),
+            "start=50": _index_html([]),  # end of forum
+            "t=1": _topic_html("O: front fender", "2024-06-01T00:00:00+00:00"),
+        }
+        self._patch_client(monkeypatch, pages)
+
+        posts = list(_ADAPTER.fetch_history(since=date(2024, 1, 1)))
+
+        assert len(posts) == 1
