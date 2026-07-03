@@ -5,6 +5,8 @@ import logging
 import random
 import re
 import time
+from collections.abc import Iterator
+from datetime import date
 
 import httpx
 from bs4 import BeautifulSoup
@@ -24,6 +26,9 @@ _BASE_URL = "https://www.ss.lv"
 # and WTB ("Pērku") posts in the same category listing — kind is left to the
 # LLM extractor rather than pre-filtered here.
 _CATEGORY_URL = f"{_BASE_URL}/lv/transport/moto-transport/spare-parts/other-parts/"
+# Recently-expired listings. No pagination and no visible posted-at date —
+# it's a single, relatively shallow rolling window, not a deep archive.
+_ARCHIVE_URL = f"{_BASE_URL}/lv/archive/transport/moto-transport/spare-parts/other-parts/"
 _PRICE_RE = re.compile(r"(\d[\d\s]*)\s*€")
 
 
@@ -34,22 +39,38 @@ class SsLvAdapter(SourceAdapter):
 
     def fetch_new(self) -> list[RawPost]:
         try:
-            return self._scrape_category()
+            return self._scrape_listing(_CATEGORY_URL, historical=False)
         except Exception:
             logger.exception("SsLvAdapter.fetch_new failed")
             return []
+
+    def fetch_history(self, since: date) -> Iterator[RawPost]:
+        # ss.lv's archive has no date field and no pagination — it's a shallow
+        # rolling window of recently-expired listings, not a deep history.
+        # `since` can't be honored precisely; log once and return everything.
+        logger.warning(
+            "SsLvAdapter.fetch_history cannot filter by date (since=%s ignored) — "
+            "the archive has no visible posted-at field and is a shallow rolling "
+            "window, not a deep history",
+            since,
+        )
+        try:
+            yield from self._scrape_listing(_ARCHIVE_URL, historical=True)
+        except Exception:
+            logger.exception("SsLvAdapter.fetch_history failed")
+            return
 
     # ------------------------------------------------------------------
     # Live scraping
     # ------------------------------------------------------------------
 
-    def _scrape_category(self) -> list[RawPost]:
+    def _scrape_listing(self, index_url: str, historical: bool) -> list[RawPost]:
         with httpx.Client(
             headers={"User-Agent": _USER_AGENT},
             follow_redirects=True,
             timeout=30,
         ) as client:
-            resp = client.get(_CATEGORY_URL)
+            resp = client.get(index_url)
             resp.raise_for_status()
             listing_urls = self._parse_category_page(resp.text)
 
@@ -65,6 +86,8 @@ class SsLvAdapter(SourceAdapter):
                     resp.raise_for_status()
                     post = self._parse_item_page(resp.text, url)
                     if post:
+                        if historical:
+                            post = post.model_copy(update={"historical": True})
                         posts.append(post)
                 except Exception:
                     logger.exception("Failed to fetch %s", url)

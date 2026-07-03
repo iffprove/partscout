@@ -3,10 +3,12 @@
 
 Two steps:
 
-  1. `run`    — fetch historical WTB posts (biker.ee, paginated back to --since),
-                fetch the current FS snapshot (nettimoto), extract both through
-                the normal LLM pipeline, run tier-1 exact + naive name-similarity
-                matching, write candidates.csv for manual review + summary.json.
+  1. `run`    — fetch historical WTB posts (biker.ee paginated back to --since;
+                ss.lv's shallow archive, which can't be date-filtered), fetch
+                the current FS snapshot (nettimoto, tori.fi, ss.lv), extract
+                both through the normal LLM pipeline, run tier-1 exact + naive
+                name-similarity matching, write candidates.csv for manual
+                review + summary.json.
   2. `report` — after you've filled in the `confirmed` column in candidates.csv
                 (y/n), tally results against the kill/continue threshold.
 
@@ -36,6 +38,8 @@ sys.path.insert(0, str(ROOT))
 
 from partscout.adapters.biker_ee import BikerEeAdapter  # noqa: E402
 from partscout.adapters.nettimoto import NettimotoAdapter  # noqa: E402
+from partscout.adapters.ss_lv import SsLvAdapter  # noqa: E402
+from partscout.adapters.tori import ToriAdapter  # noqa: E402
 from partscout.extraction.extractor import Extractor  # noqa: E402
 from partscout.extraction.llm import build_client  # noqa: E402
 from partscout.extraction.schemas import ExtractedListing, RawPost  # noqa: E402
@@ -81,18 +85,28 @@ def _build_extractor() -> Extractor:
     return Extractor(client)
 
 
-def _extract_all(
-    extractor: Extractor, posts: list[RawPost], country_hint: str, wanted_kind: str
+def _extract_source(
+    extractor: Extractor, source_name: str, posts: list[RawPost], country_hint: str
 ) -> list[Listing]:
+    """Extract every post from one source, keeping both wtb and fs kinds.
+
+    Kind is decided by the LLM per post, not by which adapter/endpoint the
+    post came from — e.g. ss.lv mixes FS and WTB in the same category.
+    """
     out: list[Listing] = []
     dropped = 0
     for post in posts:
         result = extractor.extract(post, country_hint=country_hint)
-        if result is None or result.kind != wanted_kind:
+        if result is None or result.kind == "other":
             dropped += 1
             continue
         out.append(Listing(raw=post, extracted=result))
-    print(f"  extracted {len(out)} '{wanted_kind}' listings ({dropped} dropped/other)")
+    wtb_count = sum(1 for listing in out if listing.extracted.kind == "wtb")
+    fs_count = sum(1 for listing in out if listing.extracted.kind == "fs")
+    print(
+        f"  {source_name}: extracted {wtb_count} wtb + {fs_count} fs "
+        f"({dropped} dropped/other)"
+    )
     return out
 
 
@@ -153,21 +167,46 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     extractor = _build_extractor()
 
-    print(f"Fetching historical WTB posts from biker.ee back to {since} (this can take hours)...")
+    print(f"Fetching historical WTB posts back to {since} (this can take hours)...")
     biker = BikerEeAdapter(config=None)
-    history_posts = list(biker.fetch_history(since=since))
-    print(f"  fetched {len(history_posts)} historical raw posts")
+    biker_history = list(biker.fetch_history(since=since))
+    print(f"  biker.ee: fetched {len(biker_history)} historical raw posts")
 
-    print("Extracting historical posts...")
-    wtbs = _extract_all(extractor, history_posts, country_hint="EE", wanted_kind="wtb")
+    ss_lv_history_adapter = SsLvAdapter(config=None)
+    ss_lv_history = list(ss_lv_history_adapter.fetch_history(since=since))
+    print(f"  ss.lv: fetched {len(ss_lv_history)} historical raw posts (archive, not date-bounded)")
 
-    print("Fetching current FS snapshot from nettimoto...")
-    netti = NettimotoAdapter(config=None)
-    fs_posts = netti.fetch_new()
-    print(f"  fetched {len(fs_posts)} current FS raw posts")
+    print("Fetching current snapshots from nettimoto, tori.fi, ss.lv...")
+    netti_posts = NettimotoAdapter(config=None).fetch_new()
+    print(f"  nettimoto: fetched {len(netti_posts)} raw posts")
+    tori_posts = ToriAdapter(config=None).fetch_new()
+    print(f"  tori: fetched {len(tori_posts)} raw posts")
+    ss_lv_posts = SsLvAdapter(config=None).fetch_new()
+    print(f"  ss.lv: fetched {len(ss_lv_posts)} raw posts")
 
-    print("Extracting FS snapshot...")
-    fss = _extract_all(extractor, fs_posts, country_hint="FI", wanted_kind="fs")
+    print("Extracting...")
+    historical_listings = _extract_source(
+        extractor, "biker.ee (historical)", biker_history, country_hint="EE"
+    ) + _extract_source(
+        extractor, "ss.lv (historical)", ss_lv_history, country_hint="LV"
+    )
+    current_listings = (
+        _extract_source(extractor, "nettimoto (current)", netti_posts, country_hint="FI")
+        + _extract_source(extractor, "tori (current)", tori_posts, country_hint="FI")
+        + _extract_source(extractor, "ss.lv (current)", ss_lv_posts, country_hint="LV")
+    )
+
+    # WTB demand pool: historical WTBs (expired, but were real demand) plus any
+    # currently-live WTB posts (e.g. from ss.lv, which mixes WTB into its
+    # current snapshot) — both are valid signal for the density measurement.
+    # FS supply pool: current listings only — an expired historical FS post
+    # isn't available to match against.
+    wtbs = [listing for listing in historical_listings if listing.extracted.kind == "wtb"]
+    wtbs += [listing for listing in current_listings if listing.extracted.kind == "wtb"]
+    fss = [listing for listing in current_listings if listing.extracted.kind == "fs"]
+    print(f"  total: {len(wtbs)} wtb listings, {len(fss)} fs listings")
+
+    history_posts = biker_history + ss_lv_history
 
     print("Running tier-1 exact + naive name-similarity matching...")
     candidates = _find_candidates(wtbs, fss)
@@ -211,7 +250,9 @@ def cmd_run(args: argparse.Namespace) -> None:
         "since": args.since,
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "historical_raw_posts": len(history_posts),
-        "historical_wtb_listings": len(wtbs),
+        # historical WTBs (biker.ee + ss.lv archive) plus any currently-live
+        # WTB posts (e.g. from ss.lv's current snapshot) — the full demand pool.
+        "wtb_demand_listings": len(wtbs),
         "fs_snapshot_listings": len(fss),
         "candidate_match_count": len(candidates),
         "wtb_posts_by_month": dict(sorted(posts_by_month.items())),
@@ -243,14 +284,14 @@ def cmd_report(args: argparse.Namespace) -> None:
         1 for r in rows if r.get("confirmed", "").strip().lower() in ("y", "yes", "true")
     )
     reviewed = sum(1 for r in rows if r.get("confirmed", "").strip())
-    total_wtb = summary["historical_wtb_listings"]
+    total_wtb = summary["wtb_demand_listings"]
 
     print("=" * 60)
     print("  PartScout Phase 1.5 backtest report")
     print("=" * 60)
     print(f"Since:                    {summary['since']}")
     print(f"Historical raw posts:     {summary['historical_raw_posts']}")
-    print(f"Historical WTB listings:  {total_wtb}")
+    print(f"WTB demand listings:      {total_wtb}")
     print(f"Current FS snapshot:      {summary['fs_snapshot_listings']}")
     print(f"Candidate matches:        {summary['candidate_match_count']}")
     print(f"Candidates reviewed:      {reviewed}/{len(rows)}")
@@ -275,7 +316,7 @@ def cmd_report(args: argparse.Namespace) -> None:
         f"({KILL_THRESHOLD_CONFIRMED / KILL_THRESHOLD_WTB_COUNT:.1%} rate)"
     )
     if total_wtb == 0:
-        print("No historical WTB listings — cannot evaluate.")
+        print("No WTB demand listings — cannot evaluate.")
         return
     if reviewed < len(rows):
         print(f"WARNING: {len(rows) - reviewed} candidates not yet reviewed — decision may change.")
@@ -283,7 +324,7 @@ def cmd_report(args: argparse.Namespace) -> None:
     threshold_rate = KILL_THRESHOLD_CONFIRMED / KILL_THRESHOLD_WTB_COUNT
     actual_rate = confirmed / total_wtb
     print(
-        f"Actual: {confirmed} confirmed from {total_wtb} historical WTBs "
+        f"Actual: {confirmed} confirmed from {total_wtb} WTB demand listings "
         f"({actual_rate:.1%} rate)"
     )
     if actual_rate >= threshold_rate:
