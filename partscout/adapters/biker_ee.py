@@ -20,8 +20,10 @@ _USER_AGENT = (
     "PartScout/0.1 (+https://github.com/partscout; bot@partscout.example)"
 )
 _RATE_LIMIT_SECS = 5.0
-# Backtest pagination is a one-off overnight job — be extra polite to the small forum.
-_HISTORY_RATE_LIMIT_SECS = 8.0
+# Backtest pagination is a one-off overnight job — be extra polite to the small
+# forum. Widened from 8-11s after triggering biker.ee's anti-bot rate limiter
+# during repeated backtest runs on 2026-07-03/04.
+_HISTORY_RATE_LIMIT_SECS = 30.0
 
 # biker.ee phpBB subforum for buying/selling motorcycle parts
 _FORUM_URL = "https://biker.ee/phpbb/viewforum.php?f=90"
@@ -111,7 +113,7 @@ class BikerEeAdapter(SourceAdapter):
                     logger.exception("Failed to fetch forum index page %s", page_url)
                     break
                 finally:
-                    time.sleep(_HISTORY_RATE_LIMIT_SECS + random.uniform(0, 3))
+                    time.sleep(_HISTORY_RATE_LIMIT_SECS + random.uniform(0, 30))
 
                 topic_urls = self._parse_forum_index(resp.text)
                 new_urls = [
@@ -131,7 +133,7 @@ class BikerEeAdapter(SourceAdapter):
                         logger.exception("Failed to fetch %s", url)
                         continue
                     finally:
-                        time.sleep(_HISTORY_RATE_LIMIT_SECS + random.uniform(0, 3))
+                        time.sleep(_HISTORY_RATE_LIMIT_SECS + random.uniform(0, 30))
 
                     post = self._parse_topic_page(resp.text, url)
                     if post is None:
