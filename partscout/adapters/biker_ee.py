@@ -161,12 +161,14 @@ class BikerEeAdapter(SourceAdapter):
         # The topic list renders several anchors per row (title, "jump to
         # unread", last-post permalink) that all point at the same topic but
         # don't share a URL string — e.g. "viewtopic.php?t=123" vs
-        # "viewtopic.php?p=456#p456". Dedupe by topic id, keeping only
-        # canonical t=-bearing links; p=-only permalinks are dropped since
-        # the same topic's title link is always present alongside them.
+        # "viewtopic.php?t=123&view=unread#unread" vs "viewtopic.php?p=456#p456".
+        # Dedupe by topic id. The title link (class="topictitle") always wins
+        # regardless of anchor order — the "unread" variant 404s without a
+        # live session, and p=-only permalinks carry no topic id at all.
         soup = BeautifulSoup(html, "lxml")
-        seen_topic_ids: set[str] = set()
-        urls: list[str] = []
+        topic_id_order: list[str] = []
+        topic_id_to_url: dict[str, str] = {}
+        topic_id_has_title_link: set[str] = set()
         for a in soup.select("a.topictitle, a[href*='viewtopic.php']"):
             href = a.get("href", "")
             if not isinstance(href, str) or "viewtopic.php" not in href:
@@ -175,12 +177,18 @@ class BikerEeAdapter(SourceAdapter):
             if not m:
                 continue
             topic_id = m.group(1)
-            if topic_id in seen_topic_ids:
-                continue
-            seen_topic_ids.add(topic_id)
             full = href if href.startswith("http") else f"{_BASE_URL}/phpbb/{href}"
-            urls.append(full)
-        return urls
+            is_title_link = "topictitle" in (a.get("class") or [])
+
+            if topic_id not in topic_id_to_url:
+                topic_id_order.append(topic_id)
+                topic_id_to_url[topic_id] = full
+            elif is_title_link and topic_id not in topic_id_has_title_link:
+                topic_id_to_url[topic_id] = full
+            if is_title_link:
+                topic_id_has_title_link.add(topic_id)
+
+        return [topic_id_to_url[tid] for tid in topic_id_order]
 
     # ------------------------------------------------------------------
     # HTML parsing (called directly in tests with fixture content)

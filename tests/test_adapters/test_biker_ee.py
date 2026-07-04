@@ -85,6 +85,21 @@ class TestParseForumIndex:
         urls = _ADAPTER._parse_forum_index(html)
         assert urls == []
 
+    def test_title_link_wins_even_when_unread_link_comes_first_in_markup(self) -> None:
+        # Real biker.ee rows render the "unread" icon link before the title
+        # link. The unread variant 404s without a live session — the title
+        # link must be picked regardless of anchor order.
+        html = """
+        <html><body>
+        <a href="viewtopic.php?f=90&amp;t=12345&amp;view=unread#unread">unread</a>
+        <a class="topictitle" href="viewtopic.php?f=90&amp;t=12345">Some topic</a>
+        </body></html>
+        """
+        urls = _ADAPTER._parse_forum_index(html)
+        assert len(urls) == 1
+        assert "view=unread" not in urls[0]
+        assert "t=12345" in urls[0]
+
 
 class TestBikerEeParser:
     def test_vtx1800_wtb_parsed(self) -> None:
