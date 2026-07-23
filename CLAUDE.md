@@ -103,7 +103,7 @@ Rules:
 | ss.lv (moto) | LV | FS+WTB | httpx (static HTML) | Implemented |
 | blocket.se (MC parts) | SE | FS | — | **Blocked**: robots.txt explicitly prohibits crawling without written permission. Do not scrape. |
 | finn.no (MC parts) | NO | FS | — | **Blocked**: robots.txt explicitly prohibits crawling without written permission. Do not scrape. |
-| 1–2 live forums (scout at build time; verify activity before writing adapter) | SE/FI | WTB | Scrapy | Not started |
+| sporthoj.com (MC classifieds, incl. Köpes/WTB) | SE | FS+WTB | httpx (static HTML) | Implemented |
 
 Facebook groups: **out of scope** (login wall, ToS, anti-bot). Note as known demand gap.
 

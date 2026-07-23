@@ -126,4 +126,13 @@ SOURCE_REGISTRY: list[SourceConfig] = [
         country="LV",
         kind="both",
     ),
+    SourceConfig(
+        name="sporthoj",
+        adapter_class_path="partscout.adapters.sporthoj.SporthojAdapter",
+        base_url="https://www.sporthoj.com/annonser",
+        poll_interval_seconds=7200,  # 2 h — WTB volume is low
+        enabled=True,
+        country="SE",
+        kind="both",
+    ),
 ]
