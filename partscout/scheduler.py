@@ -65,6 +65,7 @@ def _build_verifier() -> object | None:
         model=llm_cfg.model,
         api_key=llm_cfg.api_key,
         base_url=llm_cfg.base_url,
+        max_retries=llm_cfg.max_retries,
     )
     return MatchVerifier(client)
 
@@ -84,6 +85,7 @@ def poll_source(cfg: SourceConfig) -> None:
         model=llm_cfg.model,
         api_key=llm_cfg.api_key,
         base_url=llm_cfg.base_url,
+        max_retries=llm_cfg.max_retries,
     )
     extractor = Extractor(llm_client)
 

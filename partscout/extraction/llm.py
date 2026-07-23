@@ -111,10 +111,10 @@ class LLMClient(ABC):
 
 
 class AnthropicClient(LLMClient):
-    def __init__(self, model: str, api_key: str) -> None:
+    def __init__(self, model: str, api_key: str, max_retries: int = 5) -> None:
         import anthropic
 
-        self._client = anthropic.Anthropic(api_key=api_key)
+        self._client = anthropic.Anthropic(api_key=api_key, max_retries=max_retries)
         self._model = model
 
     def call(
@@ -187,10 +187,14 @@ class OpenAICompatibleClient(LLMClient):
 
 
 def build_client(
-    provider: str, model: str, api_key: str, base_url: str | None = None
+    provider: str,
+    model: str,
+    api_key: str,
+    base_url: str | None = None,
+    max_retries: int = 5,
 ) -> LLMClient:
     if provider == "anthropic":
-        return AnthropicClient(model=model, api_key=api_key)
+        return AnthropicClient(model=model, api_key=api_key, max_retries=max_retries)
     if provider == "openai_compatible":
         if not base_url:
             raise ValueError("base_url required for openai_compatible provider")

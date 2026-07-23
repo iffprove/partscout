@@ -20,6 +20,7 @@ class LLMConfig:
     model: str
     api_key: str
     base_url: str | None = None  # required for openai_compatible
+    max_retries: int = 5
 
 
 @dataclass
@@ -64,6 +65,7 @@ def get_llm_config() -> LLMConfig:
         model=os.environ.get("LLM_MODEL", "claude-haiku-4-5-20251001"),
         api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
         base_url=os.environ.get("LLM_BASE_URL"),
+        max_retries=int(os.environ.get("LLM_MAX_RETRIES", "5")),
     )
 
 
